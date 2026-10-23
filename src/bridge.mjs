@@ -11,7 +11,7 @@ import {boardEffectAssessments,EFFECT_VERSION} from './effect-state.mjs';
 import {matchupObjective} from './matchup-objective.mjs';
 import {recordShadowDecision,netPick} from './selfplay-shadow.mjs';
 import {criteria} from './describe.mjs';
-import {ask} from './jev.mjs';
+import {ask,MODEL} from './jev.mjs';
 process.loadEnvFile(fileURLToPath(new URL('../.env.local',import.meta.url)));
 const {version:plannerVersion,prepare,askJev,resolve,rulePick,constrainActions,spendFirst,allowsWeaponContinuation,allowsPlanContinuation}=await loadDecisionEngine();
 console.log(`Decision engine: ${plannerVersion}`);
@@ -30,7 +30,7 @@ let queue=[],queueLethal=false;
 const recoverJev=createJevRecovery({budgetMs:Number(process.env.JEV_FALLBACK_MS??5000),rateBudgetMs:6000});
 // The second opinion when Jev cannot answer (both its providers answered 429 at capacity on
 // 2026-09-30). Offline it matched 27/34 of Jev's confident picks; the rule pick stays the last resort.
-const BACKUP=process.env.JEV_BACKUP_MODEL??'liquid/d1';
+const BACKUP=process.env.JEV_BACKUP_MODEL??MODEL;
 // The row a decision lands on in decisions.jsonl: counted once, then kept, since this process is
 // the file's only writer. It names the picture of the position (runtime/shots/g…t…r<row>.jpg).
 let rows=null;

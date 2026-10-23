@@ -1665,3 +1665,10 @@ combo-admission-v3 納入安全確定的棄牌buff組合；discardModel完整文
 - 對手的牌面效果、職業、英雄技能不在網路輸入裡；317 個決策有 252 個場上有不認得的名字。
 - 沒有對照組，「選錯」是人看牌面判斷的。沒改程式。詳見 docs/net-ranked-review-20261013.md。
 - JEV_FOLLOW_NET 的程式（src/bridge.mjs、src/selfplay-shadow.mjs）已在同日 commit；預設關閉，641/641 測試通過。
+
+## 2026-10-20：统一日志路径并切换 DeepSeek Flash
+- `src/power.mjs` 的日志根目录改为 `HEARTHSTONE_LOG_ROOT`，当前机器默认 `D:/70_Games/Battle.net/Hearthstone/Logs`；bridge、loop、runner 与 health 共用同一入口。
+- 新增 `npm run configure-logs`，把 `config/hearthstone-log.config` 安装到 Hearthstone 用户目录；Power 日志级别与 FilePrinting 已开启，待下一次启动游戏后生成新的 `Power.log`。
+- 线上决策默认模型改为 `deepseek-flash`，通过 `DEEPSEEK_BASE_URL` 的 OpenAI 兼容 `/chat/completions` 接口调用；`DEEPSEEK_API_KEY` 优先，旧变量 `AI_GATEWAY_API_KEY` 作为本地凭证兼容名。显式 `typesafe-ai/jev` / `liquid/d1` 仍保留给冻结离线比较。
+- DeepSeek Flash 默认启用 reasoning，首次 smoke 因推理占满短输出预算而没有 JSON 正文；现在显式设置 `reasoning_effort=none`，并兼容模型返回单元素 `choice` 数组。本次 smoke 返回 `deepseek-flash`，选择 `attack`，延迟约 1.0 秒，输入/输出 165/8 tokens。
+- 648/648 测试通过。未启动 Hearthstone 或排位、未修改 `.env.local`、未 commit；`Power.log` 的实际读取仍待游戏启动后验证。

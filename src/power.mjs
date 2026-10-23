@@ -1,9 +1,12 @@
 import {readdir,open,stat} from 'node:fs/promises';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
-export const LOG_ROOT='D:/遊戲/Hearthstone/Logs';
-export async function latestLog(root=LOG_ROOT){
-  const dirs=await readdir(root,{withFileTypes:true});
+export const DEFAULT_LOG_ROOT='D:/70_Games/Battle.net/Hearthstone/Logs';
+export const logRoot=()=>process.env.HEARTHSTONE_LOG_ROOT?.trim()||DEFAULT_LOG_ROOT;
+export async function latestLog(root=logRoot()){
+  let dirs;
+  try{dirs=await readdir(root,{withFileTypes:true})}
+  catch(e){throw Error(`Hearthstone log root not found: ${root}. Set HEARTHSTONE_LOG_ROOT to the folder that contains Hearthstone_* log directories.`,{cause:e})}
   const files=await Promise.all(dirs.filter(d=>d.isDirectory()).map(async d=>{const p=join(root,d.name,'Power.log');try{return {path:p,stat:await stat(p)}}catch{return null}}));
   const f=files.filter(Boolean).sort((a,b)=>b.stat.mtimeMs-a.stat.mtimeMs)[0];
   if(!f)throw Error('No Power.log found');return f;

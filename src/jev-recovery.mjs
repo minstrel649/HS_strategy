@@ -1,7 +1,7 @@
 // Access/configuration failures cannot recover by retrying every turn.
 export function permanentJevFailure(error){
   return [401,402,403].includes(Number(error?.statusCode??error?.status)) ||
-    /free tier users do not have access|missing AI_GATEWAY_API_KEY|pricing was last checked|invalid api key|insufficient (?:credits|quota)/i.test(error?.message??'');
+    /free tier users do not have access|missing (?:AI_GATEWAY|DEEPSEEK)_API_KEY|pricing was last checked|invalid api key|insufficient (?:credits|quota)/i.test(error?.message??'');
 }
 // 2026-09-30: TypeSafe AI answered 429 "No access to this model at this time" in bursts. A
 // probe a few minutes later went through, but the loop retried every 0.8s for 5s and then played
