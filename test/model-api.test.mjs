@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ask,parseJsonObject} from '../src/jev.mjs';
+import {askModel,loadModelProfile,parseJsonObject,requestModel} from '../src/model-api.mjs';
 
 const questions={move:{type:'choice',instructions:'Attack for lethal.',criteria:{attack:'Attack face.',end:'End turn.'}}};
 
@@ -27,7 +27,7 @@ test('calls the configured DeepSeek endpoint and validates its choice',async t=>
       usage:{prompt_tokens:20,completion_tokens:4,total_tokens:24},
     }),{status:200,headers:{'content-type':'application/json','x-request-id':'request-1'}});
   };
-  const result=await ask({enemyHealth:4},questions);
+  const result=await askModel({enemyHealth:4},questions);
   assert.equal(request.url,'https://deepseek.example.test/v1/chat/completions');
   assert.equal(request.body.model,'deepseek-flash');
   assert.equal(request.body.response_format.type,'json_object');
@@ -48,5 +48,40 @@ test('rejects a choice outside the candidate menu',async t=>{
     model:'deepseek-flash',
     choices:[{message:{content:'{"move":{"choice":"invented"}}'}}],
   }),{status:200,headers:{'content-type':'application/json'}});
-  await assert.rejects(()=>ask({},questions),/outside question move's candidate menu/);
+  await assert.rejects(()=>askModel({},questions),/outside question move's candidate menu/);
+});
+
+test('loads the saved DeepSeek profile without embedding network details in code',async()=>{
+  const profile=await loadModelProfile('deepseek-flash');
+  assert.equal(profile.model.id,'deepseek-flash');
+  assert.equal(profile.api.baseUrl,'https://api.deepseek.com');
+  assert.equal(profile.api.path,'/chat/completions');
+});
+
+test('a different saved profile can target another chat-completions service',async t=>{
+  const previousFetch=globalThis.fetch;
+  t.after(()=>{globalThis.fetch=previousFetch});
+  let request;
+  globalThis.fetch=async(url,init)=>{
+    request={url,body:JSON.parse(init.body)};
+    return new Response(JSON.stringify({
+      model:'another-model',
+      choices:[{message:{content:'{}'}}],
+      usage:{},
+    }),{status:200,headers:{'content-type':'application/json'}});
+  };
+  const result=await requestModel({},questions,{
+    profile:{
+      id:'another-profile',
+      name:'Another service',
+      protocol:'chat-completions',
+      api:{baseUrl:'https://another.example/v1',path:'/chat/completions',auth:{type:'none'}},
+      model:{id:'another-model'},
+      request:{body:{temperature:0}},
+      response:{contentPath:'choices.0.message.content',modelPath:'model',usage:{}},
+    },
+  });
+  assert.equal(request.url,'https://another.example/v1/chat/completions');
+  assert.equal(request.body.model,'another-model');
+  assert.equal(result.profile.id,'another-profile');
 });

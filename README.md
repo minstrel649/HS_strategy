@@ -1,6 +1,6 @@
 # Jev Hearthstone
 
-讓 DeepSeek Flash 模型在本機打爐石戰記的機器人：讀 `Power.log` 得到盤面，用規則與搜尋把合法行動剪成少數候選，交給 DeepSeek Flash（OpenAI 相容 API）選一步，再用滑鼠點出來並核對盤面真的變了。不讀螢幕畫面、不注入遊戲程序。
+讓可配置的語言模型在本機打爐石戰記的機器人：讀 `Power.log` 得到盤面，用規則與搜尋把合法行動剪成少數候選，交給目前選定的模型 profile 選一步，再用滑鼠點出來並核對盤面真的變了。不讀螢幕畫面、不注入遊戲程序。預設 profile 是 DeepSeek Flash。
 
 目前主力是開放棄牌術（`decks/warlock-discard`）。可以無人值守連打天梯批次，分析見 [runtime/winrate-game104-153.md](runtime/winrate-game104-153.md)。逐日的修正與裁定都記在 [STATUS.md](STATUS.md)。
 
@@ -14,7 +14,7 @@
 | 卡面與盤面判讀 | 增量解析 `Power.log`，只取本方手牌與公開資訊，對照完整卡面快照寫成候選描述 | `src/power.mjs`、`src/bridge.mjs`、`src/describe.mjs`、`src/mechanics.mjs`、`data/cards.enUS.json` |
 | 滑鼠點擊 | 實體換算成視窗像素，經常駐 PowerShell worker 以 SendInput 點擊、拖曳，再核對盤面 | `src/layout.mjs`、`src/execute.mjs`、`src/win.mjs`、`src/input-worker.ps1`、`src/verify.mjs`、`src/play.mjs` |
 | 打法 | 每副牌一個資料夾：給 Jev 讀的原則與起手留牌表；使用者對實戰的裁定寫成規則 | `decks/*/strategy.md`、`decks/*/mulligan.json`、`src/policy.mjs`、`runtime/strategy-long-2026-09-21.md` |
-| 模型 | 呼叫 DeepSeek Flash 選一步；存取失敗時的備援與復原 | `src/jev.mjs`、`src/choose.mjs`、`src/decide.mjs`、`src/jev-recovery.mjs` |
+| 模型 | 依 profile 呼叫通用 API 選一步；存取失敗時的備援與復原 | `src/model-api.mjs`、`config/models/*.json`、`src/choose.mjs`、`src/decide.mjs`、`src/model-recovery.mjs` |
 | 剪枝與搜尋 | 整回合 beam search 與確定性模擬、斬殺偵測；規則分成硬刪（veto）與偏好（prefer）兩層 | `src/plan.mjs`、`src/sim.mjs`、`src/lethal.mjs`、`src/rule-release.mjs`、`src/planner-version.mjs` |
 | 對局迴圈 | 等對局開始、逐步決策、起手換牌、被吞掉的動作處理 | `src/await-game.mjs`、`src/loop.mjs`、`src/mulligan-*.mjs`、`src/dead-skip.mjs` |
 | 腳本 | 無人值守天梯批次、接近傳說時錄影、讀階級、賽後健康檢查 | `runtime/*.mjs`、`runtime/*.ps1`、`runtime/*.sh` |
@@ -32,6 +32,8 @@ npm ci
 
 把 `.env.example` 複製成 `.env.local` 並填入：
 
+- `MODEL_PROFILE`：目前使用的模型設定實例，預設 `deepseek-flash`。
+- `MODEL_BACKUP_PROFILE`：可選的第二個模型設定實例；留空時只重試目前 profile。
 - `DEEPSEEK_API_KEY`：DeepSeek API 金鑰。
 - `DEEPSEEK_BASE_URL`：OpenAI 相容 API 根網址，預設 `https://api.deepseek.com`。
 - `HEARTHSTONE_LOG_ROOT`：包含 `Hearthstone_*` 日誌目錄的根路徑。
@@ -39,13 +41,15 @@ npm ci
 
 `.env.local` 不進版本庫，也不要貼進對話。
 
+模型實例放在 `config/models/`。`deepseek-flash.json` 保存 API 根網址、路徑、模型 ID、憑證變數名稱、請求參數與回應欄位路徑；切換模型時新增另一個 profile，並把 `MODEL_PROFILE` 改成它的檔名即可。格式說明見 `config/models/README.md`。
+
 第一次使用前跑 `npm run calibrate` 校正 `src/layout.mjs`：它只移動游標、不點擊。座標是 16:9 內容區的比例，執行時乘上實際 client rect，所以 1920x1080 視窗與 2560x1440 全螢幕共用同一組數字。
 
 ## 使用
 
 ### 打一場
 
-1. `npm run smoke` 確認 DeepSeek Flash 可以呼叫。回覆無權限或額度錯誤時先處理；規則備援不是模型在思考。
+1. `npm run smoke` 確認目前 `MODEL_PROFILE` 可以呼叫。回覆無權限或額度錯誤時先處理；規則備援不是模型在思考。
 2. 在爐石選好模式與套牌。
 3. `npm run game`，再按遊戲裡的「開始」。這個命令只等待並接管對局，不會替你排隊。不要同時開第二份。
 4. 放手讓它打完，賽後再看 `runtime/last-game.log` 與 `npm run gestures`。
@@ -53,14 +57,14 @@ npm ci
 ### 連打天梯
 
 ```bash
-node runtime/ranked-continuous.mjs --games=50
+node runtime/ranked-continuous.mjs --games=100 --no-record
 ```
 
 每場重新排隊、打完後讀勝負與階級；六連敗、模型故障、配對連續失敗或出現 `runtime/stop` 檔就停。加 `--no-record` 不啟動錄影；預設會帶起 `runtime/record-legend.mjs`，從鑽石 2 開始錄到確認傳說後一分鐘（需要 ffmpeg）。階級讀自 Hearthstone Deck Tracker 的 `DeckStats.xml`。排隊用的點擊座標以 2560x1440 為基準。
 
 ### 其他命令
 
-- `npm run decide -- --inspect`：只顯示目前盤面；不加 `--inspect` 則呼叫 DeepSeek Flash 存下一步決策。
+- `npm run decide -- --inspect`：只顯示目前盤面；不加 `--inspect` 則呼叫目前模型 profile 存下一步決策。
 - `npm run play`：執行已存的決策，`--dry` 只移動游標。
 - `npm run override`：人工指定一個合法行動。
 - `npm test`：解析、資訊遮罩、候選、規則、座標與手勢測試，全部離線。

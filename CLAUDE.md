@@ -1,10 +1,10 @@
 # jev-hearthstone
 
-A Hearthstone bot. DeepSeek Flash (through its OpenAI-compatible API) picks the actions, and `src/loop.mjs` clicks them. Replies are in Traditional Chinese.
+A Hearthstone bot. The configured model profile picks the actions, and `src/loop.mjs` clicks them. The default profile is DeepSeek Flash. Replies are in Traditional Chinese.
 
 ## Workflow (the user's rule, 2026-09-24)
 - **Games run unattended.** Start one from the deck screen with `npm run game`: it waits for the game to start, then plays to the end and writes `runtime/last-game.log`. Don't arm a Monitor, don't poll, and don't take screenshots mid-game. Every wake-up re-sends the whole context, and that is what used up the weekly quota.
-  - Why: The model calls are billed through the DeepSeek API. The expensive part is Claude Code watching the game.
+  - Why: The selected model API bills its calls. The expensive part is Claude Code watching the game.
 - **Analyse once, after the game.** Read these:
   - `runtime/last-game.log`;
   - the `PLAYSTATE` lines in Power.log (`D:/遊戲/Hearthstone/Logs/<latest>/Power.log`);

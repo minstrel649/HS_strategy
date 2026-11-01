@@ -32,5 +32,6 @@
   },
   "dependencies": {
     "ai": "7.0.107"
-  }
+  },
+  "author": { "name": "Shuang Wei" }
 }

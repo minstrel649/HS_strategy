@@ -1,0 +1,51 @@
+{
+  "id": "deepseek-flash",
+  "name": "DeepSeek Flash",
+  "protocol": "chat-completions",
+  "api": {
+    "baseUrl": "https://api.deepseek.com",
+    "baseUrlEnv": ["MODEL_API_BASE_URL", "DEEPSEEK_BASE_URL"],
+    "path": "/chat/completions",
+    "method": "POST",
+    "auth": {
+      "type": "bearer",
+      "tokenEnv": ["DEEPSEEK_API_KEY", "DEEPSEEK_KEY", "AI_GATEWAY_API_KEY"]
+    },
+    "headers": {
+      "accept": "application/json"
+    }
+  },
+  "model": {
+    "id": "deepseek-flash",
+    "env": ["MODEL_ID", "DEEPSEEK_MODEL"]
+  },
+  "request": {
+    "timeoutMs": 8000,
+    "timeoutMsEnv": ["MODEL_TIMEOUT_MS", "DEEPSEEK_TIMEOUT_MS", "JEV_TIMEOUT_MS"],
+    "systemPrompt": "You are a Hearthstone decision engine. Choose exactly one listed candidate for every question. choice must be one candidate-id string, never an array. Follow the supplied instructions and visible state. Return only one JSON object with the requested answer shape; do not add prose.",
+    "body": {
+      "response_format": {
+        "type": "json_object"
+      },
+      "reasoning_effort": "none",
+      "temperature": 0.2,
+      "max_tokens": 512,
+      "stream": false
+    },
+    "bodyEnv": {
+      "reasoning_effort": ["MODEL_REASONING_EFFORT", "DEEPSEEK_REASONING_EFFORT"],
+      "temperature": ["MODEL_TEMPERATURE"],
+      "max_tokens": ["MODEL_MAX_TOKENS"]
+    }
+  },
+  "response": {
+    "contentPath": "choices.0.message.content",
+    "modelPath": "model",
+    "requestIdHeader": "x-request-id",
+    "usage": {
+      "inputTokens": "usage.prompt_tokens",
+      "outputTokens": "usage.completion_tokens",
+      "totalTokens": "usage.total_tokens"
+    }
+  }
+}

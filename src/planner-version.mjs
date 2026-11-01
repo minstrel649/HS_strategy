@@ -37,5 +37,6 @@ export async function loadDecisionEngine(version=process.env.JEV_SEARCH_VERSION?
     ?new URL('../eval/runs/silverfish-20261001/baseline/src/choose.mjs',import.meta.url)
     :new URL('./choose.mjs',import.meta.url);
   const policy=await import(new URL('./policy.mjs',url));
-  return {version,...await import(url),constrainActions:policy.constrainActions,spendFirst:policy.spendFirst};
+  const engine=await import(url);
+  return {version,...engine,askModel:engine.askModel??engine.askJev,constrainActions:policy.constrainActions,spendFirst:policy.spendFirst};
 }

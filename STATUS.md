@@ -1672,3 +1672,10 @@ combo-admission-v3 納入安全確定的棄牌buff組合；discardModel完整文
 - 线上决策默认模型改为 `deepseek-flash`，通过 `DEEPSEEK_BASE_URL` 的 OpenAI 兼容 `/chat/completions` 接口调用；`DEEPSEEK_API_KEY` 优先，旧变量 `AI_GATEWAY_API_KEY` 作为本地凭证兼容名。显式 `typesafe-ai/jev` / `liquid/d1` 仍保留给冻结离线比较。
 - DeepSeek Flash 默认启用 reasoning，首次 smoke 因推理占满短输出预算而没有 JSON 正文；现在显式设置 `reasoning_effort=none`，并兼容模型返回单元素 `choice` 数组。本次 smoke 返回 `deepseek-flash`，选择 `attack`，延迟约 1.0 秒，输入/输出 165/8 tokens。
 - 648/648 测试通过。未启动 Hearthstone 或排位、未修改 `.env.local`、未 commit；`Power.log` 的实际读取仍待游戏启动后验证。
+
+## 2026-10-30：模型调用改为通用 API profile
+- 新增 `src/model-api.mjs`：`requestModel` 负责读取保存的 profile、构造 HTTP 请求和响应字段，`askModel` 负责把棋局问题转换为合法候选项。主流程不再包含 `askDeepSeek` 或 DeepSeek 专用网络函数。
+- 当前 DeepSeek Flash 保存为 `config/models/deepseek-flash.json`，URL、路径、模型 ID、凭证环境变量、请求参数及响应字段路径都在配置实例中；运行环境用 `MODEL_PROFILE=deepseek-flash` 选择，`MODEL_BACKUP_PROFILE` 可指定第二个 profile。
+- `src/choose.mjs` 当前导出 `askModel`，旧 `askJev` 只作为冻结历史引擎兼容别名；`src/jev.mjs`、`src/jev-recovery.mjs` 保留薄兼容导出。Jev/d1 Gateway 调用移到 `src/legacy-gateway.mjs`，仅供冻结离线比较。
+- 新增 profile 格式说明与切换步骤。实时 smoke 通过：profile `deepseek-flash`、模型 `deepseek-flash`、答案 `attack`，约 0.84 秒，165/8 tokens。
+- 650/650 测试通过。未修改 `.env.local`、未启动游戏或排位、未 commit。

@@ -5,15 +5,15 @@ import {actionFor} from './plan.mjs';
 import {loadDecisionEngine} from './planner-version.mjs';
 import {fromState,followed} from './sim.mjs';
 import {deckFor} from './deck.mjs';
-import {createJevRecovery} from './jev-recovery.mjs';
+import {createModelRecovery} from './model-recovery.mjs';
 import {respectsDHTactics} from './dh-tactics.mjs';
 import {boardEffectAssessments,EFFECT_VERSION} from './effect-state.mjs';
 import {matchupObjective} from './matchup-objective.mjs';
 import {recordShadowDecision,netPick} from './selfplay-shadow.mjs';
 import {criteria} from './describe.mjs';
-import {ask,MODEL} from './jev.mjs';
+import {askModel as askConfiguredModel,modelProfileName} from './model-api.mjs';
 process.loadEnvFile(fileURLToPath(new URL('../.env.local',import.meta.url)));
-const {version:plannerVersion,prepare,askJev,resolve,rulePick,constrainActions,spendFirst,allowsWeaponContinuation,allowsPlanContinuation}=await loadDecisionEngine();
+const {version:plannerVersion,prepare,askModel,resolve,rulePick,constrainActions,spendFirst,allowsWeaponContinuation,allowsPlanContinuation}=await loadDecisionEngine();
 console.log(`Decision engine: ${plannerVersion}`);
 const definitions=JSON.parse(await readFile(new URL('../data/cards.enUS.json',import.meta.url),'utf8'));
 const cards=Object.fromEntries(definitions.map(c=>[c.id,c]));
@@ -24,13 +24,13 @@ export async function inspect(){return snapshot(undefined,cards)}
 // Secret, a late log line) drops the rest of the plan and the turn is asked afresh.
 const PLANNER=process.env.JEV_PLANNER!=='0';
 let queue=[],queueLethal=false;
-// How long one decision may keep failing to reach Jev before a rule pick is taken instead.
+// How long one decision may keep failing to reach the model before a rule pick is taken instead.
 // 2026-10-01: with liquid/d1 behind it, a throttled Jev is not worth 30s of backoff -- fall through
 // after about the same short budget as any other error.
-const recoverJev=createJevRecovery({budgetMs:Number(process.env.JEV_FALLBACK_MS??5000),rateBudgetMs:6000});
-// The second opinion when Jev cannot answer (both its providers answered 429 at capacity on
-// 2026-09-30). Offline it matched 27/34 of Jev's confident picks; the rule pick stays the last resort.
-const BACKUP=process.env.JEV_BACKUP_MODEL??MODEL;
+const recoverModel=createModelRecovery({budgetMs:Number(process.env.JEV_FALLBACK_MS??5000),rateBudgetMs:6000});
+// A second profile is optional. Without one, the same profile is retried with a longer timeout.
+const BACKUP_PROFILE=process.env.MODEL_BACKUP_PROFILE?.trim()||null;
+const backupOptions=()=>({...(BACKUP_PROFILE?{profile:BACKUP_PROFILE}:{}),timeoutMs:12000});
 // The row a decision lands on in decisions.jsonl: counted once, then kept, since this process is
 // the file's only writer. It names the picture of the position (runtime/shots/g…t…r<row>.jpg).
 let rows=null;
@@ -99,19 +99,19 @@ export async function next({shot,skip}={}){
    const rulesChoice=null;
    let result={model:null,source:'net_unopposed',latencyMs:0,answers:{move:{choice:n.action.id}}};
    if(options.length>1){
-    const request=opts=>ask({board:s.state,strategy:deckFor(s.state).strategy,networkAdvice:advice,rulesChoice,effectAssessments:{version:EFFECT_VERSION,cards:boardEffectAssessments(s.state)}},{move:{type:'choice',instructions:ADVICE_INSTRUCTIONS,criteria:criteria(s.state,options)}},opts);
-    result=await recoverJev(()=>request(),
+    const request=opts=>askConfiguredModel({board:s.state,strategy:deckFor(s.state).strategy,networkAdvice:advice,rulesChoice,effectAssessments:{version:EFFECT_VERSION,cards:boardEffectAssessments(s.state)}},{move:{type:'choice',instructions:ADVICE_INSTRUCTIONS,criteria:criteria(s.state,options)}},opts);
+    result=await recoverModel(()=>request(),
      async e=>{
-      try{return {...await request({model:BACKUP,timeoutMs:12000}),source:'backup_model',error:e.message}}
-      catch(e2){return {model:null,source:'net_fallback',latencyMs:0,answers:{move:{choice:n.action.id}},error:`${e.message} | ${BACKUP}: ${e2.message}`}}
+      try{return {...await request(backupOptions()),source:'backup_model',error:e.message}}
+      catch(e2){return {model:null,source:'net_fallback',latencyMs:0,answers:{move:{choice:n.action.id}},error:`${e.message} | ${BACKUP_PROFILE??modelProfileName()}: ${e2.message}`}}
      });
     const fresh=await inspect();if(fresh.state.decisionFingerprint!==s.state.decisionFingerprint)return {ready:false,reason:'state_changed'};
    }
    const action=options.find(a=>a.id===result.answers.move.choice)??n.action;
-   const source=result.source??(action.id===n.action.id?'net_confirmed':'jev_override');
+   const source=result.source??(action.id===n.action.id?'net_confirmed':'model_override');
    await record({createdAt:new Date().toISOString(),plannerVersion,state:s.state,options,rawOptions:rawActions,net:advice,rulesChoice,action,...result,source});
    await shadow(s,full,action,source);
-   return {ready:true,action,state:s.state,source,latencyMs:result.latencyMs,cost:result.metadata?.gateway?.cost};
+   return {ready:true,action,state:s.state,source,latencyMs:result.latencyMs,cost:result.metadata?.cost??result.metadata?.gateway?.cost};
   }
  }
  if(p.forced){
@@ -123,11 +123,11 @@ export async function next({shot,skip}={}){
  if(p.lethal){queue=p.rest;queueLethal=true;await shadow(s,full,p.lethal.action,p.lethal.source??'lethal');return {ready:true,...p.lethal,state:s.state,latencyMs:0,cost:'0'}}
  s.actions=p.acts;
  const shotTaken=shot&&await shot(PENDING).then(()=>true,()=>false);
- const result=await recoverJev(
-  ()=>askJev(s.state,p,deckFor(s.state).strategy),
+ const result=await recoverModel(
+  ()=>askModel(s.state,p,deckFor(s.state).strategy),
   async e=>{
-   try{return {...await askJev(s.state,p,deckFor(s.state).strategy,{model:BACKUP,timeoutMs:12000}),source:'backup_model',error:e.message}}
-   catch(e2){return {model:null,source:'rule_fallback',latencyMs:0,answers:{move:{choice:rulePick(p)}},error:`${e.message} | ${BACKUP}: ${e2.message}`}}
+   try{return {...await askModel(s.state,p,deckFor(s.state).strategy,backupOptions()),source:'backup_model',error:e.message}}
+   catch(e2){return {model:null,source:'rule_fallback',latencyMs:0,answers:{move:{choice:rulePick(p)}},error:`${e.message} | ${BACKUP_PROFILE??modelProfileName()}: ${e2.message}`}}
   });
  const fresh=await inspect();if(fresh.state.decisionFingerprint!==s.state.decisionFingerprint){
   if(shotTaken)await rm(PENDING,{force:true}).catch(()=>{});
@@ -137,6 +137,6 @@ export async function next({shot,skip}={}){
  if(plan)queue=plan.slice(1);
  const row=await record({createdAt:new Date().toISOString(),plannerVersion,state:s.state,options:s.actions,rawOptions:rawActions,combinationEvidence:p.combinationEvidence,decisionPolicy:p.decisionPolicy,candidateTrace:trace.evidence,fodderRelease:trace.fodderRelease,ruleReleases:trace.ruleReleases,matchupObjective:p.objective,weaponBuff:p.weaponBuff,weaponPreservation:p.weaponPreservation,weaponReplacement:p.weaponReplacement,turnOrder:p.turnOrder,turnAlternatives:p.turnAlternatives,handRetention:p.handRetention,temporaryDiscard:p.temporaryDiscard,divineShield:p.divineShield,chamberIntents:p.chamberIntents,resourceTools:p.resourceTools,searchStats:p.searchStats,...(plan?{plan:{id:pick,steps:plan,text:p.crit[pick].description,developmentEvidence:p.crit[pick].developmentEvidence,combination:p.crit[pick].combination}}:{}),action,...result});
  if(shotTaken)await rename(PENDING,`${SHOTS}g${s.state.gameNumber}t${s.state.turn}r${row}.jpg`).catch(()=>{});
- await shadow(s,full,action,result.source??'jev');
- return {ready:true,action,state:s.state,plan:plan&&pick,source:result.source,latencyMs:result.latencyMs,cost:result.metadata?.gateway?.cost};
+ await shadow(s,full,action,result.source??'model');
+ return {ready:true,action,state:s.state,plan:plan&&pick,source:result.source,latencyMs:result.latencyMs,cost:result.metadata?.cost??result.metadata?.gateway?.cost};
 }

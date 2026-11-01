@@ -1,7 +1,7 @@
 // One fresh decision, from a parsed state and its legal (constrained) actions to the action taken.
 // bridge.mjs drives it live; eval-score.mjs drives the same code over labelled positions, so the
 // offline score measures exactly the pipeline that plays.
-import {ask} from './jev.mjs';
+import {askModel as askConfiguredModel} from './model-api.mjs';
 import {forcedAction,wastedFodder,reliableOutletFor,spendFirst,setupFirst,dhTempoActions,buffSetupActions,lowBoardDiscardActions,boardRecoveryActions} from './policy.mjs';
 import {criteria,bodies,buffImpact} from './describe.mjs';
 import {menu,actionFor,developmentMenu} from './plan.mjs';
@@ -213,10 +213,13 @@ function prepareDecision(state,full,{planner,admission,chamber,preservation,repl
  return {acts,crit,plans,state,searchStats,comboPick:plans[comboPick]?comboPick:null,openingBurst,objective,weaponBuff,resourceTools:resourceToolAssessments(state)};
 }
 
-export const askJev=(state,p,strategy,opts)=>
- ask({board:state,strategy,matchupObjective:p.objective,weaponBuff:p.weaponBuff,weaponPreservation:p.weaponPreservation,weaponReplacement:p.weaponReplacement,turnOrder:p.turnOrder,turnAlternatives:p.turnAlternatives,handRetention:p.handRetention,temporaryDiscard:p.temporaryDiscard,divineShield:p.divineShield,chamberIntents:p.chamberIntents,combinationEvidence:p.combinationEvidence,resourceTools:p.resourceTools,openingBurst:p.openingBurst&&{...p.openingBurst,now:p.openingBurst.now.slice(0,3)},effectAssessments:{version:EFFECT_VERSION,cards:boardEffectAssessments(state)}},{move:{type:'choice',instructions:INSTRUCTIONS+' Compare chamberIntents as staged development plus refill, not installation alone. At most three remaining hand cards guarantees an offered payoff; more does not. Reobserve installation, activation and choice, and never queue through unknown draws. Use weaponBuff to compare mana-feasible weapon-discard and direct-summon buff lines; its guidance describes three cases. Do not spend the reserved buff mana or invent random summons. Opponent class prior probabilities and confidence are local frequency estimates, not known archetypes. For mulligan apply matchupObjective.mulligan.preferences: these already blend the aggression/pressure guess with confidence, so low support stays near neutral. Favor immediate cheap bodies and reliable trades as earlyBoard/efficientTrade rise; favor attacking pressure as immediatePressure rises; discount conditional slow setup by its multiplier. Aggression is a tempo proxy, not a known pure aggro deck. Control and combo share the pressure opening strategy. Public cards override the prior during play; never assume a fixed combo turn or waive early-curve/discard-material constraints.',criteria:p.crit}},opts);
+export const askModel=(state,p,strategy,opts)=>
+ askConfiguredModel({board:state,strategy,matchupObjective:p.objective,weaponBuff:p.weaponBuff,weaponPreservation:p.weaponPreservation,weaponReplacement:p.weaponReplacement,turnOrder:p.turnOrder,turnAlternatives:p.turnAlternatives,handRetention:p.handRetention,temporaryDiscard:p.temporaryDiscard,divineShield:p.divineShield,chamberIntents:p.chamberIntents,combinationEvidence:p.combinationEvidence,resourceTools:p.resourceTools,openingBurst:p.openingBurst&&{...p.openingBurst,now:p.openingBurst.now.slice(0,3)},effectAssessments:{version:EFFECT_VERSION,cards:boardEffectAssessments(state)}},{move:{type:'choice',instructions:INSTRUCTIONS+' Compare chamberIntents as staged development plus refill, not installation alone. At most three remaining hand cards guarantees an offered payoff; more does not. Reobserve installation, activation and choice, and never queue through unknown draws. Use weaponBuff to compare mana-feasible weapon-discard and direct-summon buff lines; its guidance describes three cases. Do not spend the reserved buff mana or invent random summons. Opponent class prior probabilities and confidence are local frequency estimates, not known archetypes. For mulligan apply matchupObjective.mulligan.preferences: these already blend the aggression/pressure guess with confidence, so low support stays near neutral. Favor immediate cheap bodies and reliable trades as earlyBoard/efficientTrade rise; favor attacking pressure as immediatePressure rises; discount conditional slow setup by its multiplier. Aggression is a tempo proxy, not a known pure aggro deck. Control and combo share the pressure opening strategy. Public cards override the prior during play; never assume a fixed combo turn or waive early-curve/discard-material constraints.',criteria:p.crit}},opts);
 
-// Jev's pick back to a legal action; a PLAN pick is its first step plus the steps still to run.
+// Frozen historical engines still export askJev. Current code uses askModel.
+export const askJev=askModel;
+
+// The model's pick back to a legal action; a PLAN pick is its first step plus the steps still to run.
 export function resolve(p,pick){
  const plan=p.plans[pick];
  const action=plan?actionFor(p.acts,plan[0]):p.acts.find(a=>a.id===pick);

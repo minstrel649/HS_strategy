@@ -8,7 +8,7 @@ import {constrainActions} from './policy.mjs';
 import {criteria} from './describe.mjs';
 import {deckFor} from './deck.mjs';
 import {boardEffectAssessments,EFFECT_VERSION} from './effect-state.mjs';
-import {ask} from './jev.mjs';
+import {askGateway as ask} from './legacy-gateway.mjs';
 import {scorePick,summarizeModel,pairedComparison} from './decision-benchmark.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));

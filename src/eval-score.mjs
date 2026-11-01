@@ -8,7 +8,7 @@
 //                           not forced, and saves the run to eval/runs/
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {spendFirst,constrainActions} from './policy.mjs';
-import {prepare,askJev,resolve} from './choose.mjs';
+import {prepare,askModel,resolve} from './choose.mjs';
 import {deckFor} from './deck.mjs';
 
 const live=process.argv.includes('--live');
@@ -61,7 +61,7 @@ if(live){
   let pick,source,probabilities,cost;
   if(pr.forced||pr.lethal){({action:{id:pick},source}=pr.forced??pr.lethal)}
   else{
-   const r=await askJev(p.state,pr,deckFor(p.state).strategy);
+   const r=await askModel(p.state,pr,deckFor(p.state).strategy);
    pick=resolve(pr,r.answers.move.choice).action.id;source=pr.plans[r.answers.move.choice]?'plan':'jev';
    probabilities=r.answers.move.probabilities;cost=r.metadata?.gateway?.cost;
   }

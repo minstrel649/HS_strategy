@@ -2,7 +2,7 @@ import {readFile,mkdir,writeFile,appendFile} from 'node:fs/promises';
 import {snapshot} from './power.mjs';
 import {loadDecisionEngine} from './planner-version.mjs';
 import {deckFor} from './deck.mjs';
-const {version:plannerVersion,constrainActions,prepare,askJev,resolve}=await loadDecisionEngine();
+const {version:plannerVersion,constrainActions,prepare,askModel,resolve}=await loadDecisionEngine();
 const cardList=JSON.parse(await readFile(new URL('../data/cards.enUS.json',import.meta.url),'utf8'));
 const cards=Object.fromEntries(cardList.map(c=>[c.id,c]));
 try{
@@ -20,10 +20,10 @@ try{
     if(Date.now()-s.mtime>maxAge)throw Error(`Game log is stale (${Math.round((Date.now()-s.mtime)/1000)}s); no decision requested.`);
     const p=prepare(s.state,s.actions,{planner:process.env.JEV_PLANNER!=='0',admission:trace.admission});
     const forced=p.forced??p.lethal;
-    const result=forced?{model:null,source:forced.source,latencyMs:0,answers:{move:{choice:forced.action.id}},metadata:{gateway:{cost:'0'}}}
-      :await askJev(s.state,p,deckFor(s.state).strategy);
+    const result=forced?{model:null,source:forced.source,latencyMs:0,answers:{move:{choice:forced.action.id}},metadata:{cost:'0'}}
+      :await askModel(s.state,p,deckFor(s.state).strategy);
     const {action,plan}=forced?{action:forced.action}:resolve(p,result.answers.move.choice);
-    const now=await snapshot(s.state.me.playerId,cards);if(now.state.decisionFingerprint!==s.state.decisionFingerprint)throw Error('State changed while Jev was thinking; discard this decision.');
+    const now=await snapshot(s.state.me.playerId,cards);if(now.state.decisionFingerprint!==s.state.decisionFingerprint)throw Error('State changed while the model was thinking; discard this decision.');
     // This CLI stages ONE action. Whole intents are recorded for review, but
     // only bridge.mjs owns the observe/validate/queue execution loop.
     const decision={...result,action,plannerVersion,combinationEvidence:p.combinationEvidence,
@@ -36,6 +36,6 @@ try{
     // cannot be replayed: mapping an option id back to an attacker is guesswork, and only 2
     // of the first 70 decisions could be reconstructed when describe.mjs needed testing.
     await appendFile(new URL('../runtime/decisions.jsonl',import.meta.url),JSON.stringify({state:s.state,options:p.acts??s.actions,rawOptions:rawActions,...decision})+'\n');
-    console.log(JSON.stringify({model:decision.model,latencyMs:decision.latencyMs,action:decision.action,cost:decision.metadata?.gateway?.cost,confidence:decision.metadata?.typesafe?.confidence},null,2));
+    console.log(JSON.stringify({model:decision.model,profile:decision.profile,latencyMs:decision.latencyMs,action:decision.action,cost:decision.metadata?.cost??decision.metadata?.gateway?.cost},null,2));
   }
 }catch(e){console.error(e.message);process.exitCode=1}
